@@ -61,4 +61,10 @@ Android Studio 或其他平台直接运行 Wrapper 前，可以把自有测试�
 
 毛玻璃通过预模糊壁纸及对应区域采样实现，不使用苹果专有 Liquid Glass 引擎。设计稿中的文字和照片均为示例，实际分享图片按用户选中的日记内容动态绘制。
 
+## 可复用的原生开发 Skill
+
+[android-app-delivery](.agents/skills/android-app-delivery/SKILL.md) 整理了从需求到可安装 Android 原生应用的流程：工程与工具链、Kotlin/Compose 页面、状态与导航、Room 数据、图片和权限、Gradle 编译、真机调试、保留数据升级与 APK 签名。附只读环境检查脚本，GitHub 发布为可选环节。
+
+在支持项目级 skills 的 Codex 环境中可以使用 `$android-app-delivery`。用于其他项目时，将完整的 `android-app-delivery` 目录复制到目标工程的 `.agents/skills/` 下。
+
 本仓库暂未授予开源许可证。

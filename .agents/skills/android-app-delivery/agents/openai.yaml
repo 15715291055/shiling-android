@@ -1,0 +1,4 @@
+interface:
+  display_name: "Android 原生应用构建与交付"
+  short_description: "从零搭建 Kotlin/Compose 原生应用，完成数据持久化、真机调试与签名 APK"
+  default_prompt: "使用 $android-app-delivery，把我的需求构建成可安装的 Android 原生应用；先检查环境和现有工程，再完成页面、数据、编译与验证。"
