@@ -29,7 +29,7 @@ data class AppearanceSettings(
     val background: Long = 0xFFF7F5EF, val image: String = "", val opacity: Float = .24f, val blur: Float = 0f,
     val accent: Long = 0xFF71815A, val title: Long = 0xFF263429, val section: Long = 0xFF263429,
     val auxiliary: Long = 0xFF737B6B, val body: Long = 0xFF263429, val date: Long = 0xFF71815A,
-    val cardOpacity: Float = .55f, val navigationOpacity: Float = .65f, val glassBlur: Float = 18f
+    val cardOpacity: Float = .55f, val navigationOpacity: Float = .65f, val glassBlur: Float = 18f, val readingProtection: Float = .35f
 )
 
 object AppearanceStore {
@@ -39,12 +39,12 @@ object AppearanceStore {
         current = runCatching {
             val j = JSONObject(context.getSharedPreferences("shiling_appearance", 0).getString("settings", "{}")!!)
             val d = AppearanceSettings()
-            AppearanceSettings(j.optLong("background", d.background), j.optString("image"), j.optDouble("opacity", .24).toFloat().coerceIn(0f,1f), j.optDouble("blur",0.0).toFloat().coerceIn(0f,25f), j.optLong("accent",d.accent), j.optLong("title",d.title), j.optLong("section",d.section), j.optLong("auxiliary",d.auxiliary), j.optLong("body",d.body),j.optLong("date",d.date),j.optDouble("cardOpacity",.55).toFloat().coerceIn(0f,1f),j.optDouble("navigationOpacity",.65).toFloat().coerceIn(0f,1f),j.optDouble("glassBlur",18.0).toFloat().coerceIn(0f,30f))
+            AppearanceSettings(j.optLong("background", d.background), j.optString("image"), j.optDouble("opacity", .24).toFloat().coerceIn(0f,1f), j.optDouble("blur",0.0).toFloat().coerceIn(0f,25f), j.optLong("accent",d.accent), j.optLong("title",d.title), j.optLong("section",d.section), j.optLong("auxiliary",d.auxiliary), j.optLong("body",d.body),j.optLong("date",d.date),j.optDouble("cardOpacity",.55).toFloat().coerceIn(0f,1f),j.optDouble("navigationOpacity",.65).toFloat().coerceIn(0f,1f),j.optDouble("glassBlur",18.0).toFloat().coerceIn(0f,30f),j.optDouble("readingProtection",.35).toFloat().coerceIn(0f,1f))
         }.getOrDefault(AppearanceSettings())
     }
     fun update(context: Context, settings: AppearanceSettings) {
         current = settings
-        val j = JSONObject().put("background",settings.background).put("image",settings.image).put("opacity",settings.opacity.toDouble()).put("blur",settings.blur.toDouble()).put("accent",settings.accent).put("title",settings.title).put("section",settings.section).put("auxiliary",settings.auxiliary).put("body",settings.body).put("date",settings.date).put("cardOpacity",settings.cardOpacity.toDouble()).put("navigationOpacity",settings.navigationOpacity.toDouble()).put("glassBlur",settings.glassBlur.toDouble())
+        val j = JSONObject().put("background",settings.background).put("image",settings.image).put("opacity",settings.opacity.toDouble()).put("blur",settings.blur.toDouble()).put("accent",settings.accent).put("title",settings.title).put("section",settings.section).put("auxiliary",settings.auxiliary).put("body",settings.body).put("date",settings.date).put("cardOpacity",settings.cardOpacity.toDouble()).put("navigationOpacity",settings.navigationOpacity.toDouble()).put("glassBlur",settings.glassBlur.toDouble()).put("readingProtection",settings.readingProtection.toDouble())
         context.getSharedPreferences("shiling_appearance",0).edit().putString("settings",j.toString()).apply()
     }
 }

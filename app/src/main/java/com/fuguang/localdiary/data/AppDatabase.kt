@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [DiaryEntity::class, FootprintEntity::class, MoodEntity::class, TagEntity::class], version = 2, exportSchema = false)
+@Database(entities = [DiaryEntity::class, FootprintEntity::class, MoodEntity::class, TagEntity::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun diaryDao(): DiaryDao
     abstract fun footprintDao(): FootprintDao
@@ -35,12 +35,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3=object:Migration(2,3) {
+            override fun migrate(db:SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE footprints ADD COLUMN placeName TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun get(context: Context): AppDatabase = INSTANCE ?: synchronized(this) {
             INSTANCE ?: Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 "fuguang-local.db"
-            ).addMigrations(MIGRATION_1_2).addCallback(object : Callback() {
+            ).addMigrations(MIGRATION_1_2,MIGRATION_2_3).addCallback(object : Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) { seed(db) }
             }).build().also { INSTANCE = it }
         }

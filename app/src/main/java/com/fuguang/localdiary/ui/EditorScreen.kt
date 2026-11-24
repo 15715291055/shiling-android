@@ -249,7 +249,7 @@ fun EditorScreen(
         }
 
         Column(
-            Modifier.weight(1f).testTag("editor-scroll").verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 30.dp),
+            Modifier.weight(1f).testTag("editor-scroll").verticalScroll(rememberScrollState()).padding(horizontal=8.dp,vertical=6.dp).glassEffect(RoundedCornerShape(20.dp),protectReading=true).padding(horizontal = 16.dp).padding(bottom = 30.dp),
             verticalArrangement = Arrangement.spacedBy(13.dp)
         ) {
             if (!errorText.isNullOrBlank()) {

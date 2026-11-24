@@ -21,13 +21,14 @@ import java.time.LocalTime
 object BackupManager {
     suspend fun export(context: Context, uri: Uri, viewModel: DiaryViewModel): Int = withContext(Dispatchers.IO) {
         val (diaries, footprints) = viewModel.backupSnapshot()
-        val root = JSONObject().put("format", "fuguang-backup").put("version", 1)
+        val root = JSONObject().put("format", "fuguang-backup").put("version", 2)
         val (moods, tags) = viewModel.moodSnapshot()
         root.put("moods", JSONArray().apply { moods.forEach { put(JSONObject().put("id", it.id).put("name", it.name).put("icon", it.icon).put("color", it.color)) } })
         root.put("tagLibrary", JSONArray().apply { tags.forEach { put(it.name) } })
         val diaryArray = JSONArray()
         val exportedImages = mutableSetOf<String>()
         ZipOutputStream(context.contentResolver.openOutputStream(uri) ?: error("无法创建备份文件")).use { zip ->
+            root.put("appearance",AppearanceBackup.export(context,zip))
             diaries.forEach { diary ->
                 val images = JSONArray()
                 diary.images().forEach { path ->
@@ -64,6 +65,7 @@ object BackupManager {
                         .put("latitude", item.latitude)
                         .put("longitude", item.longitude)
                         .put("accuracyMeters", item.accuracyMeters.toDouble())
+                        .put("placeName",item.placeName)
                 )
             }
             root.put("diaries", diaryArray).put("footprints", footprintArray)
@@ -82,6 +84,7 @@ object BackupManager {
         var committed = false
         try {
             var manifest: ByteArray? = null
+            var stagedBackground: File? = null
             val stagedImages = mutableMapOf<String, File>()
             var totalBytes = 0L
             var entries = 0
@@ -110,6 +113,11 @@ object BackupManager {
                             copyLimited(zip, buffer, 16L * 1024 * 1024)
                             manifest = buffer.toByteArray()
                         }
+                        entry.name == AppearanceBackup.BACKGROUND_ENTRY -> {
+                            val file=File(staging,"background")
+                            file.outputStream().use { copyLimited(zip,it,64L*1024*1024) }
+                            stagedBackground=file
+                        }
                         entry.name.startsWith("images/") -> {
                             val name = entry.name.removePrefix("images/")
                             require(name.isNotBlank() && name != "." && name != ".." && '/' !in name && name.none { it.code == 92 }) { "备份图片路径无效" }
@@ -123,7 +131,7 @@ object BackupManager {
                 }
             }
             val json = JSONObject(String(manifest ?: error("备份文件缺少 backup.json"), Charsets.UTF_8))
-            require(json.optString("format") == "fuguang-backup" && json.getInt("version") == 1) { "不支持此备份格式或版本" }
+            require(json.optString("format") == "fuguang-backup" && json.getInt("version") in 1..2) { "不支持此备份格式或版本" }
             val diaryArray = json.getJSONArray("diaries")
             val footprintArray = json.getJSONArray("footprints")
             val (existingDiaries, existingFootprints) = viewModel.backupSnapshot()
@@ -162,7 +170,7 @@ object BackupManager {
                 val longitude = item.getDouble("longitude")
                 val accuracy = item.getDouble("accuracyMeters")
                 require(latitude.isFinite() && latitude in -90.0..90.0 && longitude.isFinite() && longitude in -180.0..180.0 && accuracy.isFinite() && accuracy >= 0 && accuracy <= Float.MAX_VALUE) { "足迹坐标无效" }
-                if (!footprintDates.add(date)) null else FootprintEntity(date, time, latitude, longitude, accuracy.toFloat())
+                if (!footprintDates.add(date)) null else FootprintEntity(date, time, latitude, longitude, accuracy.toFloat(),item.optString("placeName").trim().take(120))
             }
             val moodArray = json.optJSONArray("moods") ?: JSONArray()
             val importedMoods = (0 until moodArray.length()).map { i ->
@@ -171,6 +179,7 @@ object BackupManager {
             }
             val tagArray = json.optJSONArray("tagLibrary") ?: JSONArray()
             val importedTags = (0 until tagArray.length()).map { com.fuguang.localdiary.data.TagEntity(tagArray.getString(it)) }
+            val appearance=AppearanceBackup.prepare(context,json.optJSONObject("appearance"),stagedBackground,installed)
             val neededPaths = diaries.flatMap { it.images() }.toSet()
             imageMapping.filterValues { it in neededPaths }.forEach { (name, path) ->
                 val destination = File(path)
@@ -179,6 +188,7 @@ object BackupManager {
             }
             val result = viewModel.mergeBackup(diaries, footprints, importedMoods, importedTags)
             committed = true
+            withContext(Dispatchers.Main) { appearance?.apply(context) }
             result
         } finally {
             if (!committed) installed.forEach { it.delete() }

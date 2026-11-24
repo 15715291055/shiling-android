@@ -101,6 +101,7 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDate
 import java.time.YearMonth
@@ -129,10 +130,11 @@ fun JournalScreen(
         diaries.filter { item ->
             (selectedDate == null || item.date == selectedDate) &&
                 (query.isBlank() || item.body.contains(query, true) || item.tags.contains(query, true) || item.date.contains(query, true) || item.time.contains(query, true))
-        }.sortedWith(compareBy<DiaryEntity> { it.date }.thenBy { it.time }.thenBy { it.id })
+        }.sortedWith(compareByDescending<DiaryEntity> { it.date }.thenByDescending { it.time }.thenByDescending { it.id })
     }
     val journalState = androidx.compose.foundation.lazy.rememberLazyListState()
-    androidx.compose.runtime.LaunchedEffect(selectedDate) { journalState.scrollToItem(0) }
+    var lastScrollDate by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(selectedDate) { if(lastScrollDate!=selectedDate) { journalState.scrollToItem(0); lastScrollDate=selectedDate } }
     LazyColumn(
         state = journalState,
         modifier = modifier.fillMaxSize().testTag("journal-scroll").semantics { stateDescription = appearance.title },
@@ -303,8 +305,7 @@ fun CalendarScreen(diaries: List<DiaryEntity>, onSelectDate: (String) -> Unit, m
     val totalDays = diaries.map { it.date }.distinct().size
 
     Column(modifier.fillMaxSize().testTag("calendar-scroll").verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
-        Text("回忆", fontSize = 27.sp, fontWeight = FontWeight.Bold, color = com.fuguang.localdiary.ui.theme.TitleInk, modifier = Modifier.padding(top = 25.dp))
-        Text("在日历里，重新遇见那些日子", color = InkSoft, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+        PageHeading("回忆","在日历里，重新遇见那些日子")
         Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = CardWhite), border = BorderStroke(1.dp, Line)) {
             Column(Modifier.fillMaxWidth().padding(17.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -397,8 +398,12 @@ fun FootprintScreen(
     onRecordLocation: () -> Unit,
     onDeleteFootprint: (String) -> Unit,
     onClearAll: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRenameFootprint:suspend(FootprintEntity,String)->Unit={_,_->},
+    onResolvePlaceName:suspend(FootprintEntity)->Unit={}
 ) {
+    var naming by remember { mutableStateOf<FootprintEntity?>(null) }
+    naming?.let { PlaceNameDialog(it,onRenameFootprint) {naming=null} }
     LazyColumn(
         modifier = modifier.fillMaxSize().testTag("footprint-scroll"),
         contentPadding = PaddingValues(bottom = 24.dp),
@@ -406,8 +411,7 @@ fun FootprintScreen(
     ) {
         item(key = "header") {
             Column {
-                Text("足迹", fontSize = 27.sp, fontWeight = FontWeight.Bold, color = com.fuguang.localdiary.ui.theme.TitleInk, modifier = Modifier.padding(start = 22.dp, top = 25.dp))
-                Text("只记录你愿意留下的地点", color = InkSoft, fontSize = 12.sp, modifier = Modifier.padding(start = 22.dp, top = 4.dp, bottom = 15.dp))
+                PageHeading("足迹","只记录你愿意留下的地点",Modifier.padding(horizontal=20.dp))
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("每日位置记录", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
@@ -426,6 +430,7 @@ fun FootprintScreen(
                     else Icon(Icons.Outlined.LocationOn, contentDescription = null, modifier = Modifier.size(18.dp))
                     Text(if (locationBusy) "正在定位…" else "记录今日位置", modifier = Modifier.padding(start = 8.dp), fontWeight = FontWeight.SemiBold)
                 }
+                Text("地名由系统地理服务解析，可能需要联网；也可手动命名。",color=InkSoft,fontSize=11.sp,modifier=Modifier.padding(horizontal=22.dp,vertical=6.dp))
                 if (!locationMessage.isNullOrBlank()) {
                     Text(locationMessage, color = InkSoft, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp))
                 }
@@ -455,13 +460,16 @@ fun FootprintScreen(
                 }
             }
             items(footprints, key = { it.date }) { item ->
+                androidx.compose.runtime.LaunchedEffect(item.date,item.placeName) {if(item.placeName.isBlank())onResolvePlaceName(item)}
                 Card(modifier = Modifier.padding(horizontal = 20.dp), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = CardWhite), border = BorderStroke(1.dp, Line)) {
                     Row(Modifier.fillMaxWidth().padding(start = 15.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(item.date, color = com.fuguang.localdiary.ui.theme.DateInk, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            Text("${item.time} · ${"%.5f".format(Locale.US, item.latitude)}, ${"%.5f".format(Locale.US, item.longitude)}", color = InkSoft, fontSize = 11.sp)
+                            Text(item.placeName.ifBlank {"待命名地点"},color=Ink,fontSize=15.sp,maxLines=2,overflow=TextOverflow.Ellipsis)
+                            Text(item.time,color=InkSoft,fontSize=11.sp)
                             Text("定位精度约 ${item.accuracyMeters.toInt()} 米", color = InkSoft, fontSize = 10.sp)
                         }
+                        TextButton(onClick={naming=item}) {Text(if(item.placeName.isBlank())"命名" else "改名")}
                         IconButton(onClick = { onDeleteFootprint(item.date) }) {
                             Icon(Icons.Outlined.DeleteOutline, contentDescription = "删除足迹", tint = InkSoft)
                         }
@@ -496,14 +504,18 @@ private fun MapCard(footprints: List<FootprintEntity>, modifier: Modifier = Modi
             footprints.forEach { item ->
                 val marker = Marker(map).apply {
                     position = GeoPoint(item.latitude, item.longitude)
-                    title = item.date
-                    snippet = "${item.time} · 精度约 ${item.accuracyMeters.toInt()} 米"
+                    title = item.placeName.ifBlank {"待命名地点"}
+                    snippet = "${item.date} · ${item.time} · 精度约 ${item.accuracyMeters.toInt()} 米"
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                 }
                 map.overlays.add(marker)
             }
             footprints.firstOrNull()?.let { latest ->
-                map.controller.setCenter(GeoPoint(latest.latitude, latest.longitude))
+                val centerKey=Triple(latest.date,latest.latitude,latest.longitude)
+                if(map.tag!=centerKey) {
+                    map.controller.setCenter(GeoPoint(latest.latitude, latest.longitude))
+                    map.tag=centerKey
+                }
             }
             map.invalidate()
         }
@@ -543,8 +555,7 @@ fun MineScreen(
     val totalWords = diaries.sumOf { it.body.count { char -> !char.isWhitespace() } }
     val totalDays = diaries.map { it.date }.distinct().size
     Column(modifier.fillMaxSize().testTag("mine-scroll").verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-        Text("我的", fontSize = 27.sp, fontWeight = FontWeight.Bold, color = com.fuguang.localdiary.ui.theme.TitleInk, modifier = Modifier.padding(start = 22.dp, top = 25.dp))
-        Text("所有记录，都留在自己的设备里", color = InkSoft, fontSize = 12.sp, modifier = Modifier.padding(start = 22.dp, top = 4.dp, bottom = 18.dp))
+        PageHeading("我的","所有记录，都留在自己的设备里",Modifier.padding(horizontal=20.dp))
         Card(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             shape = RoundedCornerShape(22.dp),
@@ -611,4 +622,24 @@ private fun SettingRow(icon: androidx.compose.ui.graphics.vector.ImageVector, ti
 @Composable
 private fun DividerLine() {
     Box(Modifier.fillMaxWidth().padding(start = 62.dp, end = 15.dp).height(1.dp).background(Line))
+}
+
+@Composable
+private fun PageHeading(title:String,subtitle:String,modifier:Modifier=Modifier) {
+    Column(modifier.fillMaxWidth().padding(top=16.dp,bottom=12.dp).padding(horizontal=12.dp,vertical=8.dp)) {
+        Text(title,fontSize=27.sp,fontWeight=FontWeight.Bold,color=com.fuguang.localdiary.ui.theme.TitleInk)
+        Text(subtitle,color=InkSoft,fontSize=12.sp,modifier=Modifier.padding(top=4.dp))
+    }
+}
+
+@Composable
+private fun PlaceNameDialog(item:FootprintEntity,onSave:suspend(FootprintEntity,String)->Unit,onDismiss:()->Unit) {
+    var name by remember(item.date) {mutableStateOf(item.placeName)}
+    var saving by remember {mutableStateOf(false)}
+    var error by remember {mutableStateOf<String?>(null)}
+    val scope=androidx.compose.runtime.rememberCoroutineScope()
+    androidx.compose.material3.AlertDialog(onDismissRequest={if(!saving)onDismiss()},title={Text("地点名称")},text={Column {
+        OutlinedTextField(value=name,onValueChange={name=it.take(120)},label={Text("例如：学校、家、河边公园")},singleLine=true)
+        error?.let {Text(it,color=Clay)}
+    }},confirmButton={TextButton(enabled=name.isNotBlank()&&!saving,onClick={saving=true;scope.launch {try {onSave(item,name.trim());onDismiss()}catch(_:Exception){error="保存失败，请重试"}finally{saving=false}}}){Text(if(saving)"保存中" else "保存")}},dismissButton={TextButton(enabled=!saving,onClick=onDismiss){Text("取消")}})
 }

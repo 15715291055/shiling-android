@@ -11,6 +11,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -36,14 +37,15 @@ import java.io.File
 import java.util.UUID
 
 @Composable
-fun SettingsPage(title:String,onBack:()->Unit,content:@Composable ColumnScope.()->Unit) {
+fun SettingsPage(title:String,onBack:()->Unit,bottomBar:(@Composable ()->Unit)?=null,content:@Composable ColumnScope.()->Unit) {
     BackHandler(onBack=onBack)
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-        Row(verticalAlignment=Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
             IconButton(onClick=onBack){Icon(Icons.Outlined.ArrowBack,"返回")}
             Text(title,color=TitleInk,fontSize=23.sp,fontFamily=FontFamily.Serif)
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp),content=content)
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal=8.dp,vertical=6.dp).glassEffect(RoundedCornerShape(20.dp),protectReading=true).padding(16.dp),verticalArrangement=Arrangement.spacedBy(16.dp),content=content)
+        bottomBar?.invoke()
     }
 }
 
@@ -109,6 +111,9 @@ fun AppearanceScreen(appearance:JournalAppearance,onStyle:(JournalAppearance)->U
         Text("背景模糊 ${s.blur.toInt()}",color=InkSoft)
         Slider(value=s.blur,onValueChange={update(s.copy(blur=it))},valueRange=0f..25f,enabled=s.image.isNotBlank())
         Text("毛玻璃",color=Ink,fontSize=18.sp)
+        Text("阅读保护 ${(s.readingProtection*100).toInt()}%",color=InkSoft)
+        Slider(value=s.readingProtection,onValueChange={update(s.copy(readingProtection=it))},valueRange=0f..1f,modifier=Modifier.testTag("reading-protection"))
+        Text("增强正文、编辑区和设置内容的可读性；页面顶部保持透明。",color=InkSoft,fontSize=12.sp)
         Text("卡片透明度 ${((1-s.cardOpacity)*100).toInt()}%",color=InkSoft)
         Slider(value=1-s.cardOpacity,onValueChange={update(s.copy(cardOpacity=1-it))},valueRange=0f..1f,modifier=Modifier.testTag("glass-card-opacity"))
         Text("导航栏透明度 ${((1-s.navigationOpacity)*100).toInt()}%",color=InkSoft)

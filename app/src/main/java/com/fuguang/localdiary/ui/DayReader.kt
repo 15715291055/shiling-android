@@ -21,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -43,11 +44,14 @@ import com.fuguang.localdiary.ui.theme.*
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneOffset
 
 @Composable
 fun DayReader(
     diaries: List<DiaryEntity>, date: String, initialId: Long?=null, onDate:(String)->Unit,
-    onBack:()->Unit, onEdit:(DiaryEntity)->Unit, onSave:suspend(DiaryEntity)->Unit, onShare:(String)->Unit
+    onBack:()->Unit, onEdit:(DiaryEntity)->Unit, onSave:suspend(DiaryEntity)->Unit, onShare:(String)->Unit,
+    appearance:JournalAppearance=JournalAppearance.TIMELINE
 ) {
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var original by rememberSaveable { mutableStateOf("") }
@@ -62,7 +66,14 @@ fun DayReader(
     val keyboard=LocalSoftwareKeyboardController.current
     val entries=remember(diaries,date) { diaries.filter { it.date==date }.sortedWith(compareBy<DiaryEntity>{it.time}.thenBy{it.id}) }
     val state=rememberLazyListState()
-    LaunchedEffect(date,initialId) { state.scrollToItem(entries.indexOfFirst { it.id==initialId }.coerceAtLeast(0)) }
+    var lastScrollRequest by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(date,initialId) {
+        val request="$date/$initialId"
+        if(lastScrollRequest!=request) {
+            state.scrollToItem(entries.indexOfFirst { it.id==initialId }.coerceAtLeast(0))
+            lastScrollRequest=request
+        }
+    }
     fun finish() { editingId=null;keyboard?.hide();error=null }
     fun back() { if(saving) return; if(editingId!=null && draft.text!=original) { exitAfterDiscard=true;discard=true } else { finish();onBack() } }
     BackHandler { back() }
@@ -104,14 +115,24 @@ fun DayReader(
                             if(entry.mood.isNotBlank()) Text("${entry.moodIcon} ${entry.mood}",color=if(entry.moodColor==0L)InkSoft else readable(Color(entry.moodColor),Paper),fontSize=12.sp)
                             IconButton(onClick={onEdit(entry)},enabled=editingId==null) {Icon(Icons.Outlined.Edit,"编辑日期、心情和图片")}
                         }
-                        EditableReadingBody(entry.body,editingId==entry.id,draft,{draft=it},onDoubleTap={offset ->
-                            if(editingId==null) { original=entry.body;draft=TextFieldValue(entry.body,TextRange(offset));editingId=entry.id }
-                        },tag="reader-body-${entry.id}")
-                        val viewer=LocalPhotoViewer.current
-                        entry.images().forEachIndexed { index,path ->
-                            AsyncImage(File(path),"放大查看日记图片",contentScale=ContentScale.FillWidth,modifier=Modifier.fillMaxWidth().heightIn(min=120.dp,max=420.dp).clickable {viewer(entry.images(),index)})
+                        val cardShape=remember(entry.id,appearance) {
+                            if(appearance==JournalAppearance.PAPER) PaperEdge(entry.id) else RoundedCornerShape(20.dp)
                         }
-                        if(entry.tags.isNotBlank()) Text(entry.tagList().joinToString("  "){"# $it"},color=InkSoft,fontSize=12.sp)
+                        Column(
+                            Modifier.fillMaxWidth().testTag("reader-card-${entry.id}")
+                                .shadow(1.dp,cardShape).glassEffect(cardShape,protectReading=true)
+                                .padding(horizontal=16.dp,vertical=18.dp),
+                            verticalArrangement=Arrangement.spacedBy(14.dp)
+                        ) {
+                            EditableReadingBody(entry.body,editingId==entry.id,draft,{draft=it},onDoubleTap={offset ->
+                                if(editingId==null) { original=entry.body;draft=TextFieldValue(entry.body,TextRange(offset));editingId=entry.id }
+                            },tag="reader-body-${entry.id}")
+                            val viewer=LocalPhotoViewer.current
+                            entry.images().forEachIndexed { index,path ->
+                                AsyncImage(File(path),"放大查看日记图片",contentScale=ContentScale.FillWidth,modifier=Modifier.fillMaxWidth().heightIn(min=120.dp,max=420.dp).clickable {viewer(entry.images(),index)})
+                            }
+                            if(entry.tags.isNotBlank()) Text(entry.tagList().joinToString("  "){"# $it"},color=InkSoft,fontSize=12.sp)
+                        }
                         HorizontalDivider(color=Line)
                     }
                 }
@@ -141,9 +162,23 @@ private fun EditableReadingBody(text:String,editing:Boolean,value:TextFieldValue
     } else Text(text,style=style,onTextLayout={layout=it},modifier=Modifier.fillMaxWidth().testTag(tag).pointerInput(text) {detectTapGestures(onDoubleTap={ onDoubleTap(layout?.getOffsetForPosition(it) ?: 0) })})
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DateJumpDialog(current:String,onDismiss:()->Unit,onSelect:(String)->Unit) {
-    var value by remember { mutableStateOf(current) }
-    var error by remember { mutableStateOf(false) }
-    AlertDialog(onDismissRequest=onDismiss,title={Text("跳转到日期")},text={Column {OutlinedTextField(value,onValueChange={value=it;error=false},label={Text("年-月-日")},singleLine=true,isError=error);if(error)Text("请输入有效日期，例如 2026-11-23",color=MaterialTheme.colorScheme.error)}},confirmButton={TextButton(onClick={if(runCatching {LocalDate.parse(value)}.isSuccess)onSelect(value) else error=true}) {Text("跳转")}},dismissButton={TextButton(onClick=onDismiss){Text("取消")}})
+    val initial=remember(current) { runCatching { LocalDate.parse(current) }.getOrDefault(LocalDate.now()) }
+    // Material DatePicker represents calendar dates at UTC midnight, independent of device timezone.
+    val state=rememberDatePickerState(
+        initialSelectedDateMillis=initial.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli(),
+        initialDisplayMode=DisplayMode.Picker,
+        yearRange=minOf(1900,initial.year)..maxOf(2100,initial.year)
+    )
+    DatePickerDialog(
+        onDismissRequest=onDismiss,
+        confirmButton={TextButton(enabled=state.selectedDateMillis!=null,onClick={
+            state.selectedDateMillis?.let { onSelect(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString()) }
+        }) {Text("跳转")}},
+        dismissButton={TextButton(onClick=onDismiss) {Text("取消")}}
+    ) {
+        DatePicker(state=state,title={Text("跳转到日期",modifier=Modifier.padding(start=24.dp,end=12.dp,top=16.dp))})
+    }
 }

@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
+import com.fuguang.localdiary.data.ShareSettings
+import com.fuguang.localdiary.data.ShareSettingsStore
 import com.fuguang.localdiary.data.DiaryEntity
 import com.fuguang.localdiary.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -59,10 +61,13 @@ fun ShareScreen(diaries:List<DiaryEntity>,initialDate:String,onBack:()->Unit) {
     var ids by rememberSaveable(date){mutableStateOf(arrayListOf<Long>())}
     var initialized by rememberSaveable(date){mutableStateOf(false)}
     LaunchedEffect(entries.map{it.id}) { if(!initialized && entries.isNotEmpty()){ids=ArrayList(entries.map{it.id});initialized=true} }
-    var template by rememberSaveable{mutableStateOf(ShareTemplate.POETRY)}
+    val savedSettings=remember { ShareSettingsStore.read(context) }
+    var template by rememberSaveable{mutableStateOf(runCatching{ShareTemplate.valueOf(savedSettings.template)}.getOrDefault(ShareTemplate.POETRY))}
     var classicStyles by rememberSaveable { mutableStateOf(false) }
-    var font by rememberSaveable{mutableFloatStateOf(36f)}
-    var spacing by rememberSaveable{mutableFloatStateOf(1.6f)}
+    var expandEntries by rememberSaveable(date) { mutableStateOf(false) }
+    var font by rememberSaveable{mutableFloatStateOf(savedSettings.font)}
+    var spacing by rememberSaveable{mutableFloatStateOf(savedSettings.spacing)}
+    LaunchedEffect(template,font,spacing) { ShareSettingsStore.save(context,ShareSettings(template.name,font,spacing)) }
     var files by remember {mutableStateOf<List<File>>(emptyList())}
     var busy by remember{mutableStateOf(false)}
     var message by remember{mutableStateOf("")}
@@ -76,33 +81,43 @@ fun ShareScreen(diaries:List<DiaryEntity>,initialDate:String,onBack:()->Unit) {
     val permission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){if(it)saveImages() else message="没有相册写入权限，仍可使用系统分享。"}
     if(jump) DateJumpDialog(date,{jump=false}){date=it;files=emptyList();jump=false}
     LaunchedEffect(ids.toList(),template,font,spacing,date){files=emptyList()}
-    SettingsPage("每日分享",onBack) {
-        TextButton(onClick={jump=true},enabled=!busy){Text("$date ▾")}
-        Text("选择需要分享的记录，全文会完整排版。较长内容自动分成多张图片。",color=InkSoft)
-        if(entries.isEmpty()) Text("这一天还没有日记",color=InkSoft)
-        entries.forEach{entry->Row(Modifier.fillMaxWidth().clickable(enabled=!busy){ids=ArrayList(if(entry.id in ids)ids-entry.id else ids+entry.id)},verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
-            Checkbox(entry.id in ids,onCheckedChange={checked->ids=ArrayList(if(checked)ids+entry.id else ids-entry.id)},enabled=!busy)
-            Column(Modifier.weight(1f)){Text("${entry.time}  ${entry.moodIcon} ${entry.mood}",color=DateInk);Text(entry.body.take(60),maxLines=2,color=BodyInk)}
-        }}
-        Text("分享风格",color=Ink)
-        ShareTemplate.entries.filter{it.editorial||classicStyles}.forEach{item->Row(Modifier.fillMaxWidth().testTag("share-style-${item.name}").clickable(enabled=!busy){template=item}.padding(vertical=4.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){RadioButton(template==item,onClick={template=item},enabled=!busy);Column{Text(item.title,color=Ink);Text(item.description,color=InkSoft,fontSize=11.sp)}}}
-        TextButton(onClick={classicStyles=!classicStyles}){Text(if(classicStyles)"收起经典风格" else "更多经典风格（8）")}
-        Text("字号 ${font.toInt()} · 分享图片中的大小",color=InkSoft)
-        Slider(font,{font=it},valueRange=28f..48f,enabled=!busy)
-        Text("行距 ${String.format("%.1f",spacing)}",color=InkSoft)
-        Slider(spacing,{spacing=it},valueRange=1.2f..2f,enabled=!busy)
-        Button(enabled=!busy&&ids.isNotEmpty(),onClick={
+    SettingsPage("每日分享",onBack,bottomBar={
+        Column(Modifier.fillMaxWidth().glassEffect(protectReading=true).padding(horizontal=16.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+            Button(modifier=Modifier.fillMaxWidth().testTag("share-generate"),enabled=!busy&&ids.isNotEmpty(),onClick={
             val selected=entries.filter{it.id in ids};val selectedTemplate=template;val selectedFont=font;val selectedSpacing=spacing
             busy=true;message="正在本机排版…"
             scope.launch{try{files=withContext(Dispatchers.Default){ShareImages.generate(context,date,selected,selectedTemplate,selectedFont,selectedSpacing)};previewIndex=0;message="已生成 ${files.size} 张图片，请预览后保存或分享"}catch(e:Exception){message="生成失败：${e.message}"}finally{busy=false}}
         }){Text(if(busy)"处理中…" else "生成分享图片")}
+            if(files.isNotEmpty()) { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                OutlinedButton(enabled=!busy,onClick={if(Build.VERSION.SDK_INT<29 && ContextCompat.checkSelfPermission(context,Manifest.permission.WRITE_EXTERNAL_STORAGE)!=PackageManager.PERMISSION_GRANTED)permission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) else saveImages()}){Text("保存到相册")}
+                Button(enabled=!busy,onClick={runCatching{ShareImages.share(context,files)}.onFailure{message="无法打开分享：${it.message}"}}){Text("系统分享")}
+            } }
+        }
+    }) {
+        TextButton(onClick={jump=true},enabled=!busy){Text("$date ▾")}
+        Text("选择需要分享的记录，全文会完整排版。较长内容自动分成多张图片。",color=InkSoft)
+        if(entries.isEmpty()) Text("这一天还没有日记",color=InkSoft)
+        Text("分享风格",color=Ink)
+        ShareStylePicker(template,classicStyles,!busy) { template=it;ShareSettingsStore.save(context,ShareSettings(it.name,font,spacing)) }
+        Text(template.description,color=InkSoft,fontSize=11.sp)
+        TextButton(onClick={classicStyles=!classicStyles}){Text(if(classicStyles)"收起经典风格" else "更多经典风格（8）")}
+        Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+            Text("已选择 ${ids.size}/${entries.size} 篇",color=InkSoft,modifier=Modifier.weight(1f))
+            TextButton(enabled=!busy,onClick={ids=ArrayList(entries.map{it.id})}){Text("全选")}
+            TextButton(enabled=!busy,onClick={ids=arrayListOf()}){Text("清空")}
+        }
+        (if(expandEntries)entries else entries.take(3)).forEach{entry->Row(Modifier.fillMaxWidth().clickable(enabled=!busy){ids=ArrayList(if(entry.id in ids)ids-entry.id else ids+entry.id)},verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
+            Checkbox(entry.id in ids,onCheckedChange={checked->ids=ArrayList(if(checked)ids+entry.id else ids-entry.id)},enabled=!busy)
+            Column(Modifier.weight(1f)){Text("${entry.time}  ${entry.moodIcon} ${entry.mood}",color=DateInk);Text(entry.body.take(60),maxLines=2,color=BodyInk)}
+        }}
+        if(entries.size>3) TextButton(onClick={expandEntries=!expandEntries}) { Text(if(expandEntries)"收起记录" else "查看全部 ${entries.size} 篇记录") }
+        Text("字号 ${font.toInt()} · 分享图片中的大小",color=InkSoft)
+        Slider(font,{font=it},valueRange=28f..48f,enabled=!busy,modifier=Modifier.testTag("share-font"))
+        Text("行距 ${String.format("%.1f",spacing)}",color=InkSoft)
+        Slider(spacing,{spacing=it},valueRange=1.2f..2f,enabled=!busy,modifier=Modifier.testTag("share-spacing"))
         if(message.isNotBlank()) Text(message,color=InkSoft)
         if(files.isNotEmpty()){
             val index=previewIndex.coerceIn(0,files.lastIndex)
-            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                OutlinedButton(enabled=!busy,onClick={if(Build.VERSION.SDK_INT<29 && ContextCompat.checkSelfPermission(context,Manifest.permission.WRITE_EXTERNAL_STORAGE)!=PackageManager.PERMISSION_GRANTED)permission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) else saveImages()}){Text("保存到相册")}
-                Button(enabled=!busy,onClick={runCatching{ShareImages.share(context,files)}.onFailure{message="无法打开分享：${it.message}"}}){Text("系统分享")}
-            }
             Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
                 TextButton(enabled=index>0,onClick={previewIndex=index-1}){Text("上一张")}
                 Text("${index+1} / ${files.size}",color=InkSoft,modifier=Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Center)

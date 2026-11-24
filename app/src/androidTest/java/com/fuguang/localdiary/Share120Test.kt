@@ -21,7 +21,7 @@ class Share120Test {
         try{
             compose.onNodeWithContentDescription("我的",useUnmergedTree=true).performClick()
             compose.onNodeWithText("每日分享").performScrollTo().performClick()
-            compose.onNodeWithText("生成分享图片").performScrollTo().performClick()
+            compose.onNodeWithText("生成分享图片").assertIsDisplayed().performClick()
             compose.waitUntil(15000){compose.onAllNodesWithTag("share-preview").fetchSemanticsNodes().isNotEmpty()}
             compose.onNodeWithTag("share-fullscreen").performScrollTo().performClick()
             compose.onNodeWithTag("photo-viewer").assertExists()

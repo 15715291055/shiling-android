@@ -36,17 +36,26 @@ import kotlin.math.sin
 
 private val JournalSerif = FontFamily.Serif
 
-private class PaperEdge(private val seed: Long) : Shape {
+internal class PaperEdge(private val seed: Long) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val roughness = with(density) { 1.7.dp.toPx() }
+        val roughness = minOf(with(density) { 3.2.dp.toPx() },minOf(size.width,size.height)*.085f)
+        val step=with(density) { 8.dp.toPx() }
+        fun grain(index:Int,edge:Int):Float {
+            var value=seed.toInt() xor (index*374761393) xor (edge*668265263)
+            value=(value xor (value ushr 13))*1274126177
+            return ((value xor (value ushr 16)) and 65535)/65535f
+        }
         val path = Path().apply {
-            moveTo(0f, roughness)
-            lineTo(size.width, 0f)
-            lineTo(size.width, size.height - roughness)
-            for (i in 40 downTo 0) {
-                val y = size.height - roughness * (0.5f + 0.5f * sin(i * 2.7f + (seed % 31)))
-                lineTo(size.width * i / 40, y)
-            }
+            val across=(size.width/step).toInt().coerceIn(5,120)
+            val down=(size.height/step).toInt().coerceIn(4,120)
+            moveTo(roughness*.4f,roughness*.4f)
+            for(i in 1 until across)lineTo(size.width*i/across,roughness*(.12f+.88f*grain(i,0)))
+            lineTo(size.width-roughness*.4f,roughness*.4f)
+            for(i in 1 until down)lineTo(size.width-roughness*(.12f+.88f*grain(i,1)),size.height*i/down)
+            lineTo(size.width-roughness*.4f,size.height-roughness*.4f)
+            for(i in across-1 downTo 1)lineTo(size.width*i/across,size.height-roughness*(.12f+.88f*grain(i,2)))
+            lineTo(roughness*.4f,size.height-roughness*.4f)
+            for(i in down-1 downTo 1)lineTo(roughness*(.12f+.88f*grain(i,3)),size.height*i/down)
             close()
         }
         return Outline.Generic(path)

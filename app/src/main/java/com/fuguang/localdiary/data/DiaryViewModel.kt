@@ -43,6 +43,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun addFootprint(item: FootprintEntity) = withContext(Dispatchers.IO) { db.footprintDao().upsert(item) }
     suspend fun deleteFootprints() = withContext(Dispatchers.IO) { db.footprintDao().clearAll() }
     suspend fun deleteFootprint(date: String) = withContext(Dispatchers.IO) { db.footprintDao().deleteByDate(date) }
+    suspend fun renameFootprint(date:String,name:String) = withContext(Dispatchers.IO) { db.footprintDao().rename(date,name.trim().take(120)) }
+    suspend fun resolvePlaceName(item:FootprintEntity) = withContext(Dispatchers.IO) {
+        if(item.placeName.isBlank())try {
+            com.fuguang.localdiary.location.PlaceNames.resolve(getApplication<Application>(),item.latitude,item.longitude)?.let {
+                db.footprintDao().nameIfEmpty(item.date,it)
+            }
+        } catch(e:kotlinx.coroutines.CancellationException) {throw e} catch(_:Exception) { /* Manual naming remains available. */ }
+    }
     suspend fun allDiaries() = withContext(Dispatchers.IO) { db.diaryDao().getAll() }
     suspend fun allFootprints() = withContext(Dispatchers.IO) { db.footprintDao().getAll() }
     suspend fun importDiary(item: DiaryEntity) = withContext(Dispatchers.IO) { db.diaryDao().insertImported(item) }

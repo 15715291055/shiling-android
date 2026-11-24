@@ -36,7 +36,7 @@ class Upgrade120Test {
             db.execSQL("INSERT INTO footprints VALUES('2026-11-22','12:00',1.3,103.8,20)")
             db.version=1
         }
-        val db=Room.databaseBuilder(context,AppDatabase::class.java,file.absolutePath).addMigrations(AppDatabase.MIGRATION_1_2).build()
+        val db=Room.databaseBuilder(context,AppDatabase::class.java,file.absolutePath).addMigrations(AppDatabase.MIGRATION_1_2,AppDatabase.MIGRATION_2_3).build()
         try {
             val entry=db.diaryDao().getAll().single()
             assertEquals(17L,entry.id);assertEquals(body,entry.body);assertEquals(image.absolutePath,entry.images().single())

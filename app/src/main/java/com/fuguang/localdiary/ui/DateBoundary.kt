@@ -37,7 +37,7 @@ internal fun dampedDistance(raw: Float, limit: Float): Float = sign(raw)*limit*(
 @Composable
 fun DateBoundary(
     date: String, diaries: List<DiaryEntity>, enabled: Boolean=true, skipEmpty: Boolean=false,
-    onDate: (String)->Unit, modifier: Modifier=Modifier, content: @Composable ()->Unit
+    onDate: (String)->Unit, modifier: Modifier=Modifier, newestFirst:Boolean=false, content: @Composable ()->Unit
 ) {
     val density=LocalDensity.current
     val threshold=with(density) { 92.dp.toPx() }
@@ -104,7 +104,7 @@ fun DateBoundary(
     } }
     val offset=animated ?: dampedDistance(raw,limit)
     val neighbor=adjacent(if(offset>=0) 1f else -1f)
-    val preview=remember(diaries,neighbor) { diaries.filter { it.date==neighbor }.sortedBy { it.time } }
+    val preview=remember(diaries,neighbor,newestFirst) { diaries.filter { it.date==neighbor }.sortedWith(if(newestFirst)compareByDescending<DiaryEntity>{it.time}.thenByDescending{it.id} else compareBy<DiaryEntity>{it.time}.thenBy{it.id}) }
     BoxWithConstraints(modifier.fillMaxSize().clipToBounds().nestedScroll(connection).testTag("date-boundary").semantics { stateDescription=if(armed) "松开切换日期" else "正常阅读" }) {
         SideEffect { height=constraints.maxHeight.toFloat().coerceAtLeast(1f) }
         if(abs(offset)>1f) {

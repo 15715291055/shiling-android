@@ -113,6 +113,8 @@ enum class MainTab(val label: String, val icon: ImageVector) {
 @Composable
 fun FuguangApp(viewModel: DiaryViewModel) {
     val context = LocalContext.current
+    val readerStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    val tabStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     val diaries by viewModel.diaries.collectAsStateWithLifecycle()
     val footprints by viewModel.footprints.collectAsStateWithLifecycle()
     val moods by viewModel.moods.collectAsStateWithLifecycle()
@@ -226,6 +228,7 @@ fun FuguangApp(viewModel: DiaryViewModel) {
         if (uri != null) scope.launch {
             try {
                 val (diaryCount, footprintCount) = BackupManager.import(context, uri, viewModel)
+                appearance = JournalAppearance.read(context)
                 snackbar.showSnackbar("导入完成：新增 $diaryCount 篇日记、$footprintCount 条足迹；已有记录不会被覆盖")
             } catch (error: Exception) {
                 snackbar.showSnackbar("导入失败：${error.message ?: "文件可能已损坏或格式不正确"}")
@@ -237,7 +240,7 @@ fun FuguangApp(viewModel: DiaryViewModel) {
         AlertDialog(
             onDismissRequest = { showExportWarning = false },
             title = { Text("备份包含敏感位置数据") },
-            text = { Text("本次 ZIP 备份会包含日记、图片和足迹坐标。请确认保存到可信位置，不要随意分享备份文件。") },
+            text = { Text("本次 ZIP 备份会包含日记、图片、足迹坐标、主题背景和分享设置。请确认保存到可信位置，不要随意分享备份文件。") },
             confirmButton = {
                 TextButton(onClick = {
                     showExportWarning = false
@@ -286,7 +289,7 @@ fun FuguangApp(viewModel: DiaryViewModel) {
         AlertDialog(
             onDismissRequest = { showAbout = false },
             title = { Text("关于拾零") },
-            text = { Text("拾零是一款以本地保存为原则的日记应用。日记、图片和足迹保存在这台设备上，不需要账号，也不提供云同步。\n\n地图底图由 OpenStreetMap 提供，加载瓦片会访问网络并暴露正在查看的地图区域；你的足迹记录不会上传。卸载应用或清除应用数据可能导致本机记录丢失，请定期导出备份。") },
+            text = { Text("拾零是一款以本地保存为原则的日记应用。日记、图片和足迹保存在这台设备上，不需要账号，也不提供云同步。\n\n地图底图由 OpenStreetMap 提供，加载瓦片会访问网络并暴露正在查看的地图区域；坐标保存在本机；解析地点名称时，系统地理服务可能联网处理位置。卸载应用或清除应用数据可能导致本机记录丢失，请定期导出备份。") },
             confirmButton = { TextButton(onClick = { showAbout = false }) { Text("知道了") } }
         )
     }
@@ -312,10 +315,13 @@ fun FuguangApp(viewModel: DiaryViewModel) {
     } else if (showEditor == "share") {
         ShareScreen(diaries, shareDate ?: LocalDate.now().toString(), { shareDate = null })
     } else if (showEditor == "reader") {
+        readerStates.SaveableStateProvider("reader") {
         DayReader(diaries, readerDate ?: LocalDate.now().toString(), readerId,
             onDate = { readerDate = it; selectedDate = it; readerId = null },
-            onBack = { readerDate = null; readerId = null },
-            onEdit = { editing = it; editorOpen = true }, onSave = { viewModel.save(it) }, onShare = { shareDate = it })
+            onBack = { readerDate = null; readerId = null; readerStates.removeState("reader") },
+            onEdit = { editing = it; editorOpen = true }, onSave = { viewModel.save(it) }, onShare = { shareDate = it },
+            appearance = appearance)
+        }
     } else if (showEditor == "editor") {
         EditorScreen(
             initial = editing,
@@ -381,17 +387,11 @@ fun FuguangApp(viewModel: DiaryViewModel) {
                 }
             }
         ) { padding ->
-            AnimatedContent(
-                targetState = tab,
-                transitionSpec = {
-                    (fadeIn() + slideInHorizontally { it / 16 }) togetherWith
-                        (fadeOut() + slideOutHorizontally { -it / 16 })
-                },
-                label = "tab-transition"
-            ) { currentTab ->
+            MainTabTransition(tab) { currentTab ->
+                tabStates.SaveableStateProvider(currentTab.name) {
                 when (currentTab) {
                     MainTab.JOURNAL -> DateBoundary(selectedDate ?: LocalDate.now().toString(), diaries,
-                        enabled = query.isBlank(), onDate = { selectedDate = it }, modifier = Modifier.padding(padding)) {
+                        enabled = query.isBlank(), onDate = { selectedDate = it }, modifier = Modifier.padding(padding), newestFirst = true) {
                     JournalScreen(
                         diaries = diaries,
                         query = query,
@@ -430,6 +430,8 @@ fun FuguangApp(viewModel: DiaryViewModel) {
                         },
                         onDeleteFootprint = { date -> scope.launch { viewModel.deleteFootprint(date); snackbar.showSnackbar("已删除 $date 的足迹") } },
                         onClearAll = { showClearFootprints = true },
+                        onRenameFootprint = { item,name -> viewModel.renameFootprint(item.date,name) },
+                        onResolvePlaceName = { viewModel.resolvePlaceName(it) },
                         modifier = Modifier.padding(padding)
                     )
                     MainTab.MINE -> MineScreen(
@@ -446,6 +448,7 @@ fun FuguangApp(viewModel: DiaryViewModel) {
                         onMoods = { showMoods = true },
                         onShare = { shareDate = selectedDate ?: LocalDate.now().toString() }
                     )
+                }
                 }
             }
         }

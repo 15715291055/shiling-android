@@ -25,4 +25,10 @@ interface FootprintDao {
 
     @Query("DELETE FROM footprints WHERE date = :date")
     suspend fun deleteByDate(date: String)
+
+    @Query("UPDATE footprints SET placeName = :name WHERE date = :date")
+    suspend fun rename(date:String,name:String)
+
+    @Query("UPDATE footprints SET placeName = :name WHERE date = :date AND placeName = ''")
+    suspend fun nameIfEmpty(date:String,name:String)
 }

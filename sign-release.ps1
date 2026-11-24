@@ -32,13 +32,13 @@ if (-not (Test-Path -LiteralPath $keyPath)) {
 }
 $buildTools = Join-Path $env:ANDROID_HOME 'build-tools\35.0.0'
 $aligned = Join-Path $PSScriptRoot '.tmp\release-aligned.apk'
-$release = Join-Path $PSScriptRoot 'deliverables\Shiling-1.2.3-release.apk'
+$release = Join-Path $PSScriptRoot 'deliverables\Shiling-1.2.6-release.apk'
 & "$buildTools\zipalign.exe" -f -P 16 4 '.\app\build\outputs\apk\release\app-release-unsigned.apk' $aligned
 if ($LASTEXITCODE -ne 0) { throw 'zipalign failed' }
 & "$buildTools\apksigner.bat" sign --ks $keyPath --ks-key-alias fuguang --ks-pass "file:$passwordPath" --out $release $aligned
 if ($LASTEXITCODE -ne 0) { throw 'APK signing failed' }
 & "$buildTools\apksigner.bat" verify --verbose --print-certs $release | Tee-Object '.\verification\release-signature.txt'
 if ($LASTEXITCODE -ne 0) { throw 'APK signature verification failed' }
-Copy-Item '.\app\build\outputs\apk\debug\app-debug.apk' '.\deliverables\Shiling-1.2.3-debug.apk' -Force
+Copy-Item '.\app\build\outputs\apk\debug\app-debug.apk' '.\deliverables\Shiling-1.2.6-debug.apk' -Force
 Get-FileHash '.\deliverables\*.apk' -Algorithm SHA256 | Format-List | Out-File '.\verification\apk-sha256.txt'
 Write-Host "Signed APK: $release"

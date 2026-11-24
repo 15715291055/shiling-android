@@ -14,8 +14,8 @@ android {
         applicationId = "com.fuguang.localdiary.nativeapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.2.3"
+        versionCode = 10
+        versionName = "1.2.6"
         resValue("string", "app_name", "拾零")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

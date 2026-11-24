@@ -23,12 +23,14 @@ val LocalGlassBackdrop=staticCompositionLocalOf { GlassBackdrop(null,IntSize.Zer
 // Sample the pre-blurred wallpaper at the panel's real screen position. Text and controls
 // are drawn afterwards and never blurred. One bitmap is shared by every scrolling panel.
 @Composable
-fun Modifier.glassEffect(shape:Shape=RoundedCornerShape(20.dp),tint:Color=CardWhite,navigation:Boolean=false):Modifier {
+fun Modifier.glassEffect(shape:Shape=RoundedCornerShape(20.dp),tint:Color=CardWhite,navigation:Boolean=false,protectReading:Boolean=false):Modifier {
     val backdrop=LocalGlassBackdrop.current
     val settings=AppearanceStore.current
-    val opacity=if(navigation)settings.navigationOpacity else settings.cardOpacity
+    val baseOpacity=if(navigation)settings.navigationOpacity else settings.cardOpacity
+    val opacity=if(protectReading) 1f-(1f-baseOpacity)*(1f-settings.readingProtection) else baseOpacity
     var position by remember { mutableStateOf(Offset.Zero) }
     return this.onGloballyPositioned { position=it.positionInRoot() }.clip(shape).drawWithCache {
+        val outline=shape.createOutline(size,layoutDirection,this)
         val highlight=Brush.linearGradient(listOf(Color.White.copy(alpha=.48f*(1-opacity*.5f)),Color.White.copy(alpha=.03f),Color.White.copy(alpha=.13f)),start=Offset.Zero,end=Offset(size.width,size.height))
         onDrawBehind {
             // Glass must have a stable backdrop even without a wallpaper. Otherwise a
@@ -45,7 +47,7 @@ fun Modifier.glassEffect(shape:Shape=RoundedCornerShape(20.dp),tint:Color=CardWh
             drawRect(tint.copy(alpha=opacity))
             // Keep the face tint uniform; a full-face local gradient changes brightness as
             // a long paper card scrolls. Restrict specular light to the glass edge instead.
-            drawRoundRect(highlight,cornerRadius=androidx.compose.ui.geometry.CornerRadius(20.dp.toPx()),style=Stroke(.9.dp.toPx()))
+            drawOutline(outline,brush=highlight,style=Stroke(.7.dp.toPx()))
         }
     }
 }
